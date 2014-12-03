@@ -42,6 +42,10 @@ def pal(number)
   end
 end
 
+
+# NOT VALID YET
+
+
 # Evens
 pal("4141") # => 4224
 pal("41") # => 44
