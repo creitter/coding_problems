@@ -6,9 +6,8 @@ class Hangman
 		@api = Api.new()
     # Most popular letters go in the front
     @vowels = ['e','i','a','o','u']
-    @common_letters = ['s','b','g','w','m','n','l','t','h']
-    @everything_else = ['c','d','f','j','k','p','q','r','v','x','y','z']
-    @common_words = ['a','the','of', 'and', 'to', 'in']  # TODO strings or subarrays?
+    @consonants = ['n','l','t','h','r','c','s','b','g','w','m','d','f','j','k','p','q','v','x','y','z']
+    @common_words = ['a','on','be','out', 'put','the','she','you','about','easy', 'away', 'from','can','been', 'of', 'and', 'to', 'in', 'alarming', 'rate', 'name', 'well', 'tell', 'we','ball', 'two', 'were','this', 'have', 'toward']  # TODO put into a file to upload and in some more efficient order
 	end
 
 	def run
@@ -24,8 +23,10 @@ class Hangman
     
     num_tries_left = response["num_tries_left"]
     phrase = load_phrase(response["phrase"])
+    state = response["state"]
     
-    while num_tries_left != "0" && error.nil?
+    while num_tries_left != "0" && error.nil? && state == "alive"
+      
       letter = choose_letter(phrase, num_tries_left)
       response = @api.send_guess_request(response["game_key"], letter)
       error = response["error"]
@@ -34,17 +35,21 @@ class Hangman
       if error.nil?
         num_tries_left = response["num_tries_left"]
         phrase = load_phrase(response["phrase"])
+        state = response["state"]
 
-        if response["state"] == "alive" 
+        if state == "alive" 
           if num_tries_left == old_num_tries_left
             print "You have #{response["phrase"].count(letter)} '#{letter}' >> " 
           else
             print "Nope '#{letter}' wasn't a good guess. >> "
           end
         else
-          # Once I figure out how to win, I'll know the state to test for!
-          puts ""
-          puts response["state"]
+          if state == "won"
+            puts "YOU WON!!"
+          else
+            puts "The game is over"
+          end
+          
         end
 
         puts response["phrase"]
@@ -63,23 +68,21 @@ class Hangman
   
   # Choose a letter based on some brilliant deduction
   def choose_letter(phrase, num_of_tries)
-    letter = ''
+    letter = nil
     
     # Have we picked all of the vowels already?
     letter = @vowels.shift if !@vowels.empty? && need_vowel?(phrase)
     
     # Try to make a 'smart' decision based on the word patterns if we've already picked a few letters
-    if num_of_tries.to_i < 4 # Randomly chosen number
+    if letter.nil? && num_of_tries.to_i < 4 # Randomly chosen number
       # TODO: Commented out because I just broke it as you walked in.
-      # letter = educated_guess(phrase)
+       letter = educated_guess(phrase)
     end
       
-    
-    while letter.empty?
+    while letter.nil?
       # TODO Make this 'smarter' by looking at common words we could fill in
-      letter = @vowels.shift if letter.empty? && !@vowels.empty?  # Try vowels again if we have any
-      letter = @common_letters.shift if !@common_letters.empty?
-      letter = @everything_else.shift if letter.empty? && !@everything_else.empty?
+      letter = @vowels.shift if letter.nil? && !@vowels.empty?  # Try vowels again if we have any
+      letter = @consonants.shift if letter.nil? && !@consonants.empty?
     end 
 
     # TODO: Verify we have a letter to return.
@@ -88,30 +91,58 @@ class Hangman
   
 
   def educated_guess(phrase)
-    letter = ""
+    letter = nil
     
-    phrase.each { |word| 
-      # Try some common letter combinations
-      # th
-      if word.include?("t") 
-        letter = "h" if !word.include?("h")
-        break
-      end
-      
-      # qu
-      if word.include?("q") 
-        letter = "u" if !word.include?("u")
-        break
-      end
+    phrase.each { |word|
+      # Has this word been solved?
+      if !word[/_/].nil?
+        # Only get words with the same length
+        #TODO: Refactor to include subwords like ball in football
+        subset_words = @common_words.select{|common_word| common_word.length == word.length}
+        subset_words.each { |common_word|
+          word_regexp = /#{word.gsub('_', '\w')}/
+          if word_regexp.match(common_word)
+            word_no_underscore_re = Regexp.new("[" + word.gsub("_", "") + "]")
+            remaining_characters = common_word.gsub(word_no_underscore_re,'')
+            everything = @vowels + @consonants
+            remaining_characters = remaining_characters.split("").delete_if{|letter| !everything.include?(letter)}
+            if remaining_characters.length > 0
+              letter = remaining_characters.first
+              #TODO: Clean this up too
+              @vowels.delete(letter) if !@vowels.empty?
+              @consonants.delete(letter) if !@consonants.empty?
+              break
+            end
+          end
+        }
+        
+        # Try some common letter combinations
+        # TODO: Make this smarter > Regular Expressions
+        # th
+        if letter.nil? && word.include?("t") && !word.include?("h") && @consonants.include?("h")
+          letter = "h"
+          @consonants.delete("h")
+          break
+        end
 
-      # wh
-      if word.include?("w") 
-        letter = "h" if !word.include?("h")
-        break
+        # qu
+        if word.include?("q") && !word.include?("u") && @vowels.include?("u")
+          letter = "u"
+          @vowels.delete("u")
+          break
+        end
+
+        # wh
+        if word.include?("w") && !word.include?("h") && @consonants.include?("h")
+          letter = "h"
+          @consonants.delete("h")
+          break
+        end
+  
       end
-      
+      break if !letter.nil?
     }
-
+    
     letter
     
   end
